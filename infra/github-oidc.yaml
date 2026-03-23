@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "GitHub Actions OIDC integration for CI/CD deployments"
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: Name of GitHub organization/user
+  GitHubRepo:
+    Type: String
+    Description: Name of GitHub repository
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 1b511abead59c6ce207077c0bf0e0043b1382612 # GitHub's OIDC thumbprint
+
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GitHubActionsDeployRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRoleWithWebIdentity
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Condition:
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+      Policies:
+        - PolicyName: DeployPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - ecr:*
+                  - ecs:*
+                  - iam:PassRole
+                Resource: "*"
+
+Outputs:
+  RoleArn:
+    Description: The ARN of the IAM role to use in GitHub Actions
+    Value: !GetAtt GitHubActionsRole.Arn

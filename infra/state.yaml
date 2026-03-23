@@ -1,0 +1,193 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'MDQ Task Queue - Stateful Infrastructure (VPC, PostgreSQL, Redis)'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: dev
+  DBMasterUser:
+    Type: String
+    Default: mdqadmin
+  DBMasterPassword:
+    Type: String
+    NoEcho: true
+    Description: Must be at least 8 characters
+
+Resources:
+  # ==========================================
+  # 1. NETWORKING (The VPC Foundation)
+  # ==========================================
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-mdq-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets (For ALB and Fargate to save NAT Gateway costs)
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+
+  # Private Subnets (Strictly for Databases - No Internet Route)
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.20.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+
+  # Route Table for Public Subnets
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # ==========================================
+  # 2. SECURITY GROUPS (The Network Firewalls)
+  # ==========================================
+  # We create a placeholder SG for Fargate so the databases can trust it
+  FargateSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Applied to Fargate Tasks
+      VpcId: !Ref VPC
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow Postgres from Fargate
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !GetAtt FargateSecurityGroup.GroupId
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow Redis from Fargate
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !GetAtt FargateSecurityGroup.GroupId
+
+  # ==========================================
+  # 3. STATE (PostgreSQL & Redis)
+  # ==========================================
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets for Aurora
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  # SOTA: Aurora Serverless v2 scales CPU/RAM dynamically
+  AuroraCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-postgresql
+      EngineMode: provisioned
+      EngineVersion: '16.1' # Modern Postgres
+      DatabaseName: taskqueue
+      MasterUsername: !Ref DBMasterUser
+      MasterUserPassword: !Ref DBMasterPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - !GetAtt DatabaseSecurityGroup.GroupId
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0.5 # Lowest possible capacity to save costs
+        MaxCapacity: 2.0
+
+  AuroraInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref AuroraCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnets for Redis
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      Engine: redis
+      CacheNodeType: cache.t4g.micro # ARM-based, cheapest option for MVP
+      NumCacheNodes: 1
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      VpcSecurityGroupIds:
+        - !GetAtt RedisSecurityGroup.GroupId
+
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+  PublicSubnetIds:
+    Value: !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2]]
+  FargateSecurityGroupId:
+    Value: !GetAtt FargateSecurityGroup.GroupId
+  # These connection strings are what you will pass to your Fargate template
+  DatabaseUrl:
+    Value: !Sub "postgres://${DBMasterUser}:${DBMasterPassword}@${AuroraCluster.Endpoint.Address}:${AuroraCluster.Endpoint.Port}/taskqueue?sslmode=require"
+  RedisUrl:
+    Value: !Sub "redis://${RedisCluster.RedisEndpoint.Address}:${RedisCluster.RedisEndpoint.Port}/0"

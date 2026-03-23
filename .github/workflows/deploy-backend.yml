@@ -1,0 +1,78 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  AWS_REGION: us-west-2
+  PROJECT_NAME: carpecode-task-queue
+
+# CRITICAL: We need 'write' permissions on id-token to request the OIDC JWT from GitHub
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    name: Lint & Test Go Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          
+      - name: Run Tests
+        run: |
+          go mod tidy
+          go test -v ./...
+
+  build-and-push:
+    name: Build & Push to Amazon ECR
+    needs: test
+    # Only push images if we are merging/pushing to main, not on PRs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push API image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }} # Use the git commit hash for versioning
+        run: |
+          # Build the API
+          docker build --build-arg APP_NAME=api -t $ECR_REGISTRY/$PROJECT_NAME-api:$IMAGE_TAG -f build/Dockerfile .
+          docker push $ECR_REGISTRY/$PROJECT_NAME-api:$IMAGE_TAG
+          
+          # Tag as latest and push
+          docker tag $ECR_REGISTRY/$PROJECT_NAME-api:$IMAGE_TAG $ECR_REGISTRY/$PROJECT_NAME-api:latest
+          docker push $ECR_REGISTRY/$PROJECT_NAME-api:latest
+
+      - name: Build, tag, and push Worker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build the Worker
+          docker build --build-arg APP_NAME=worker -t $ECR_REGISTRY/$PROJECT_NAME-worker:$IMAGE_TAG -f build/Dockerfile .
+          docker push $ECR_REGISTRY/$PROJECT_NAME-worker:$IMAGE_TAG
+          
+          # Tag as latest and push
+          docker tag $ECR_REGISTRY/$PROJECT_NAME-worker:$IMAGE_TAG $ECR_REGISTRY/$PROJECT_NAME-worker:latest
+          docker push $ECR_REGISTRY/$PROJECT_NAME-worker:latest

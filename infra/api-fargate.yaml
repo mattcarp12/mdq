@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'MDQ Task Queue - API Fargate Service'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: dev
+    Description: Environment name that will be prefixed to resource names
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The VPC to deploy into
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets for the ALB and Fargate Tasks
+  ApiImageUrl:
+    Type: String
+    Description: The ECR URI of the API Docker image
+  DatabaseUrl:
+    Type: String
+    NoEcho: true # Keeps the password out of AWS console logs
+    Description: PostgreSQL connection string
+  RedisUrl:
+    Type: String
+    NoEcho: true
+    Description: Redis connection string
+
+Resources:
+  # 1. The ECS Cluster (The logical grouping of your containers)
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${EnvironmentName}-mdq-cluster
+      CapacityProviders:
+        - FARGATE
+
+  # 2. Security Groups (The Firewalls)
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow inbound HTTP from the internet
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  ApiSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow inbound traffic from ALB only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !GetAtt AlbSecurityGroup.GroupId
+
+  # 3. The Load Balancer (Routes traffic to your containers)
+  PublicLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${EnvironmentName}-mdq-api-alb
+      Scheme: internet-facing
+      Subnets: !Ref Subnets
+      SecurityGroups:
+        - !GetAtt AlbSecurityGroup.GroupId
+
+  AlbTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${EnvironmentName}-mdq-api-tg
+      VpcId: !Ref VpcId
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckPath: /api/v1/jobs # We will need to add a basic GET handler for this, or a /healthz endpoint
+      HealthCheckIntervalSeconds: 30
+
+  AlbListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AlbTargetGroup
+      LoadBalancerArn: !Ref PublicLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  # 4. The IAM Roles (Permissions for the container)
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # 5. The Fargate Task Definition (How to run your specific Docker image)
+  ApiTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${EnvironmentName}-mdq-api
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'    # .25 vCPU is plenty for a SOTA Go binary
+      Memory: '512' # 512 MB RAM
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: api
+          Image: !Ref ApiImageUrl
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          Environment:
+            # 12-Factor: Injecting state via environment variables
+            - Name: PORT
+              Value: "8080"
+            - Name: DATABASE_URL
+              Value: !Ref DatabaseUrl
+            - Name: REDIS_URL
+              Value: !Ref RedisUrl
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /ecs/${EnvironmentName}-mdq-api
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  # 6. The ECS Service (Keeps the containers running and scales them)
+  ApiService:
+    Type: AWS::ECS::Service
+    DependsOn: AlbListener
+    Properties:
+      ServiceName: mdq-api-service
+      Cluster: !Ref EcsCluster
+      TaskDefinition: !Ref ApiTaskDefinition
+      DesiredCount: 1 # Run 1 container for MVP
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !GetAtt ApiSecurityGroup.GroupId
+          Subnets: !Ref Subnets
+      LoadBalancers:
+        - ContainerName: api
+          ContainerPort: 8080
+          TargetGroupArn: !Ref AlbTargetGroup
+
+Outputs:
+  ApiEndpoint:
+    Description: The public URL of your API
+    Value: !Sub "http://${PublicLoadBalancer.DNSName}"
