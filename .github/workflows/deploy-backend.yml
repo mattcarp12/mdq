@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch: # <--- This enables the manual "Run workflow" button in GitHub
 
 env:
   AWS_REGION: us-west-2
@@ -19,6 +20,10 @@ jobs:
   test:
     name: Lint & Test Go Code
     runs-on: ubuntu-latest
+    # Tell GitHub to run all commands in this job inside the backend folder
+    defaults:
+      run:
+        working-directory: ./backend 
     steps:
       - uses: actions/checkout@v4
       
@@ -35,8 +40,8 @@ jobs:
   build-and-push:
     name: Build & Push to Amazon ECR
     needs: test
-    # Only push images if we are merging/pushing to main, not on PRs
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Run on push to main OR when manually triggered via workflow_dispatch
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,8 +61,8 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }} # Use the git commit hash for versioning
         run: |
-          # Build the API
-          docker build --build-arg APP_NAME=api -t $ECR_REGISTRY/$PROJECT_NAME-api:$IMAGE_TAG -f build/Dockerfile .
+          # Build the API (Updated to use the backend/ context)
+          docker build --build-arg APP_NAME=api -t $ECR_REGISTRY/$PROJECT_NAME-api:$IMAGE_TAG -f backend/Dockerfile backend/
           docker push $ECR_REGISTRY/$PROJECT_NAME-api:$IMAGE_TAG
           
           # Tag as latest and push
@@ -69,8 +74,8 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Build the Worker
-          docker build --build-arg APP_NAME=worker -t $ECR_REGISTRY/$PROJECT_NAME-worker:$IMAGE_TAG -f build/Dockerfile .
+          # Build the Worker (Updated to use the backend/ context)
+          docker build --build-arg APP_NAME=worker -t $ECR_REGISTRY/$PROJECT_NAME-worker:$IMAGE_TAG -f backend/Dockerfile backend/
           docker push $ECR_REGISTRY/$PROJECT_NAME-worker:$IMAGE_TAG
           
           # Tag as latest and push
