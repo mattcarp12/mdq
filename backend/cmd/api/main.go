@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -34,6 +35,25 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		// In local dev, you can set this in your devcontainer.json or .bashrc
+		log.Fatal("FATAL: JWT_SECRET environment variable is required")
+	}
+	env := os.Getenv("ENV")
+	if env == "" {
+		env = "development"
+	}
+	var logger *slog.Logger
+	if env == "production" {
+		logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	} else {
+		logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	}
+
+	slog.SetDefault(logger)
+
+	slog.Info("Starting MDQ API server...", slog.String("port", port), slog.String("env", env))
 
 	// 3. Handle Migrations
 	if *runMigrations {
@@ -61,8 +81,10 @@ func main() {
 
 	// 5. Inject Dependencies
 	jobRepo := repository.NewPostgresJobRepository(pgPool)
+	userRepo := repository.NewPostgresUserRepository(pgPool)
 	producer := queue.NewRedisProducer(redisClient, "mdq:jobs")
-	server := api.NewServer(jobRepo, producer)
+
+	server := api.NewServer(jobRepo, userRepo, producer, []byte(jwtSecret))
 
 	// 6. Setup Routing
 	mux := http.NewServeMux()
@@ -70,14 +92,14 @@ func main() {
 
 	httpServer := &http.Server{
 		Addr:    ":" + port,
-		Handler: mux,
+		Handler: server.SetupHandler(),
 	}
 
 	// 7. Start Server
 	go func() {
-		log.Printf("MDQ API Server starting on port %s...", port)
+		slog.Info("MDQ API Server starting on port %s...", slog.String("port", port))
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed: %v", err)
+			slog.Error("Server failed", slog.Any("error", err))
 		}
 	}()
 

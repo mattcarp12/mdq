@@ -1,0 +1,52 @@
+/* A classic, brutally simple 90s/00s web aesthetic */
+body {
+  margin: 0;
+  padding: 20px;
+  background-color: #c0c0c0; /* Classic Windows 95 Gray */
+  color: #000000;
+  font-family: 'Verdana', 'Arial', sans-serif;
+}
+
+#root {
+  max-width: 800px;
+  margin: 0 auto;
+  background-color: #ffffff;
+  border: 2px solid #000000;
+  padding: 20px;
+  box-shadow: 4px 4px 0px #808080;
+}
+
+h1, h2, h3 {
+  font-family: 'Times New Roman', serif;
+  border-bottom: 2px solid #000000;
+  padding-bottom: 5px;
+  margin-top: 0;
+}
+
+input[type="text"], input[type="password"] {
+  padding: 5px;
+  border: 2px inset #ffffff;
+  background-color: #ffffff;
+  font-family: 'Courier New', monospace;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 15px;
+}
+
+button {
+  background-color: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 5px 15px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:active {
+  border: 2px inset #ffffff;
+}
+
+.error-message {
+  color: #ff0000;
+  font-weight: bold;
+  margin-bottom: 15px;
+}

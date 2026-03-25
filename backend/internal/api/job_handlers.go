@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/mattcarp12/mdq/internal/repository"
@@ -26,21 +26,28 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		req.MaxRetries = 3
 	}
 
+	// Extract the securely validated UserID from the context
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, `{"error": "unauthorized context"}`, http.StatusUnauthorized)
+		return
+	}
+
 	job, err := s.JobRepo.CreateJob(r.Context(), repository.CreateJobParams{
 		Type:       req.Type,
 		Payload:    req.Payload,
 		MaxRetries: req.MaxRetries,
+		UserID:     userID,
 	})
-
 	if err != nil {
-		log.Printf("Failed to create job: %v", err)
+		slog.Error("Failed to create job in database", "error", err.Error(), "userID", userID, "jobType", req.Type)
 		http.Error(w, `{"error": "internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
 	err = s.QueueProducer.Enqueue(r.Context(), job.ID, job.Type)
 	if err != nil {
-		log.Printf("Failed to enqueue job %s: %v", job.ID, err)
+		slog.Error("Failed to enqueue job", "jobID", job.ID, "error", err.Error())
 		// Note: We don't fail the HTTP request here. The job is safely in Postgres.
 		// Our background "sweeper" process will eventually pick it up and retry the enqueue.
 	}
@@ -51,5 +58,30 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		"message": "Job queued successfully",
 		"job_id":  job.ID,
 		"status":  job.Status,
+	})
+}
+
+func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
+	// Extract the UserID securely placed by the AuthMiddleware
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok || userID == "" {
+		slog.Error("UserID missing in context")
+		http.Error(w, `{"error": "unauthorized context"}`, http.StatusUnauthorized)
+		return
+	}
+
+	jobs, err := s.JobRepo.GetJobsByUser(r.Context(), userID)
+	if err != nil {
+		slog.Error("Failed to retrieve jobs for user", "userID", userID, "error", err.Error())
+		http.Error(w, `{"error": "internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	// Wrap the array in an object for better JSON API design (easier to add pagination metadata later)
+	json.NewEncoder(w).Encode(map[string]any{
+		"data": jobs,
 	})
 }
