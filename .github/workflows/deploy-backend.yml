@@ -3,9 +3,15 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'backend/**'                               # Triggers on any change inside the backend folder
+      - '.github/workflows/deploy-backend.yml'     # Triggers if you update this specific pipeline file
   pull_request:
     branches: [ "main" ]
-  workflow_dispatch: # <--- This enables the manual "Run workflow" button in GitHub
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch: # Keeps your manual trigger button intact
 
 env:
   AWS_REGION: us-west-2
