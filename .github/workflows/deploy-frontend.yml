@@ -1,0 +1,65 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'frontend/**'                              # Only run if React code changes
+      - '.github/workflows/deploy-frontend.yml'    # Or if this pipeline changes
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-west-2
+  ENVIRONMENT: dev
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy React SPA
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci # SOTA: 'ci' is strictly for automated environments (clean install)
+
+      - name: Build Vite App
+        run: npm run build
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch Infrastructure Outputs
+        id: infra
+        run: |
+          # Dynamically grab the S3 Bucket Name and CloudFront ID from your CloudFormation stack
+          BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name mdq-frontend-${{ env.ENVIRONMENT }} --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text)
+          DIST_ID=$(aws cloudformation describe-stacks --stack-name mdq-frontend-${{ env.ENVIRONMENT }} --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" --output text)
+          
+          # Pass them to the next steps
+          echo "bucket=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          echo "distribution=$DIST_ID" >> $GITHUB_OUTPUT
+
+      - name: Deploy to S3
+        # Sync the compiled /dist folder to S3, deleting old files that no longer exist
+        run: aws s3 sync dist/ s3://${{ steps.infra.outputs.bucket }} --delete
+
+      - name: Invalidate CloudFront Cache
+        # Force the CDN edge nodes to fetch the newly uploaded index.html
+        run: aws cloudfront create-invalidation --distribution-id ${{ steps.infra.outputs.distribution }} --paths "/*"

@@ -35,17 +35,53 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
       Policies:
-        - PolicyName: DeployPolicy
+        # 1. Backend Permissions: Allow pushing to our specific ECR repositories
+        - PolicyName: ECRPushAccess
           PolicyDocument:
-            Version: "2012-10-17"
+            Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
-                  - cloudformation:*
-                  - ecr:*
-                  - ecs:*
-                  - iam:PassRole
-                Resource: "*"
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/carpecode-task-queue-*
+        
+        # 2. Frontend Permissions: Allow syncing to S3 and invalidating the CloudFront cache
+        - PolicyName: FrontendDeploymentAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:GetObject
+                # SOTA: We restrict this to buckets containing "mdq-frontend" in the name
+                Resource:
+                  - !Sub arn:aws:s3:::*-mdq-frontend-*
+                  - !Sub arn:aws:s3:::*-mdq-frontend-*/*
+              - Effect: Allow
+                Action:
+                  - cloudfront:CreateInvalidation
+                Resource: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/*
+        
+        # 3. Infrastructure Permissions: Allow pipeline to query CloudFormation outputs
+        - PolicyName: CloudFormationReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/*mdq*/*
 
 Outputs:
   RoleArn:
