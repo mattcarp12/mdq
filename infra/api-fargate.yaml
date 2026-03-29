@@ -23,6 +23,10 @@ Parameters:
     Type: String
     NoEcho: true
     Description: Redis connection string
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Description: Secret key for signing JWTs
 
 Resources:
   # 1. The ECS Cluster (The logical grouping of your containers)
@@ -74,7 +78,7 @@ Resources:
       Port: 8080
       Protocol: HTTP
       TargetType: ip
-      HealthCheckPath: /api/v1/jobs # We will need to add a basic GET handler for this, or a /healthz endpoint
+      HealthCheckPath: /healthz
       HealthCheckIntervalSeconds: 30
 
   AlbListener:
@@ -125,12 +129,20 @@ Resources:
               Value: !Ref DatabaseUrl
             - Name: REDIS_URL
               Value: !Ref RedisUrl
+            - Name: JWT_SECRET
+              Value: !Ref JwtSecret
           LogConfiguration:
             LogDriver: awslogs
             Options:
               awslogs-group: !Sub /ecs/${EnvironmentName}-mdq-api
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
+  
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${EnvironmentName}-mdq-api
+      RetentionInDays: 30 # Highly recommended so you don't pay for logs forever
 
   # 6. The ECS Service (Keeps the containers running and scales them)
   ApiService:
@@ -147,6 +159,7 @@ Resources:
           AssignPublicIp: ENABLED
           SecurityGroups:
             - !GetAtt ApiSecurityGroup.GroupId
+            - !ImportValue FargateSecurityGroupId
           Subnets: !Ref Subnets
       LoadBalancers:
         - ContainerName: api

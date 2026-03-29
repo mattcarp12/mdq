@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useAuth } from './AuthContext';
+import api from './api';
 
 interface Job {
   id: string;
@@ -19,16 +20,10 @@ export const Dashboard = () => {
 
   const fetchJobs = async () => {
     try {
-      const response = await axios.get('/api/v1/jobs', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/v1/jobs');   // ← no manual headers needed anymore!
       setJobs(response.data.data);
     } catch (err) {
       console.error('Failed to fetch jobs', err);
-      // If we get a 401 Unauthorized, our token expired or is invalid
-      if (axios.isAxiosError(err) && err.response?.status === 401) {
-        logout();
-      }
     }
   };
 
@@ -52,17 +47,15 @@ export const Dashboard = () => {
     }
 
     try {
-      await axios.post('/api/v1/jobs', {
+      await api.post('/v1/jobs', {   // ← no manual headers needed
         type: jobType,
         payload: parsedPayload,
-        max_retries: 3
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
+        max_retries: 3,
       });
-      
+
       // Reset form and immediately fetch updated list
       setJobType('video_compression');
-      fetchJobs(); 
+      fetchJobs();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to submit job to the queue.');
     }
@@ -74,30 +67,30 @@ export const Dashboard = () => {
         <h2>MDQ Control Panel</h2>
         <button onClick={logout}>Log Out</button>
       </div>
-      
+
       <fieldset style={{ marginBottom: '20px', border: '2px outset #ffffff', backgroundColor: '#e0e0e0' }}>
         <legend style={{ fontWeight: 'bold', backgroundColor: '#c0c0c0', padding: '0 5px' }}>Submit New Job</legend>
-        
+
         {error && <div className="error-message">{error}</div>}
-        
+
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '10px' }}>
             <label><strong>Job Type:</strong></label><br />
-            <input 
-              type="text" 
-              value={jobType} 
-              onChange={(e) => setJobType(e.target.value)} 
-              required 
+            <input
+              type="text"
+              value={jobType}
+              onChange={(e) => setJobType(e.target.value)}
+              required
             />
           </div>
           <div style={{ marginBottom: '10px' }}>
             <label><strong>Payload (JSON):</strong></label><br />
-            <textarea 
-              value={payloadData} 
-              onChange={(e) => setPayloadData(e.target.value)} 
+            <textarea
+              value={payloadData}
+              onChange={(e) => setPayloadData(e.target.value)}
               rows={4}
               style={{ width: '100%', fontFamily: 'Courier New', border: '2px inset #ffffff' }}
-              required 
+              required
             />
           </div>
           <button type="submit">Enqueue Task</button>
@@ -126,10 +119,10 @@ export const Dashboard = () => {
                 <td style={{ padding: '5px', border: '1px solid #c0c0c0' }}>{job.type}</td>
                 <td style={{ padding: '5px', border: '1px solid #c0c0c0', fontWeight: 'bold' }}>
                   {/* SOTA Tip: Color coding status makes dashboards instantly readable */}
-                  <span style={{ 
-                    color: job.status === 'COMPLETED' ? 'green' : 
-                           job.status === 'FAILED' ? 'red' : 
-                           job.status === 'RUNNING' ? 'blue' : 'black' 
+                  <span style={{
+                    color: job.status === 'COMPLETED' ? 'green' :
+                      job.status === 'FAILED' ? 'red' :
+                        job.status === 'RUNNING' ? 'blue' : 'black'
                   }}>
                     {job.status}
                   </span>

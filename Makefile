@@ -52,7 +52,8 @@ deploy-api: ## Deploy Fargate API using outputs from the State stack
 			Subnets=$(SUBNETS) \
 			ApiImageUrl=$(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/carpecode-task-queue-api:latest \
 			DatabaseUrl="$(DB_URL)" \
-			RedisUrl="$(REDIS_URL)"
+			RedisUrl="$(REDIS_URL)" \
+			JwtSecret=$(JWT_SECRET)
 
 deploy-frontend: ## Deploy S3 and CloudFront CDN
 	aws cloudformation deploy --template-file infra/frontend-cdn.yaml --stack-name $(FRONTEND_STACK) --region $(AWS_REGION) --parameter-overrides EnvironmentName=$(ENVIRONMENT)
