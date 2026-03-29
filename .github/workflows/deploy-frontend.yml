@@ -48,16 +48,14 @@ jobs:
           # Dynamically grab the S3 Bucket Name and CloudFront ID from your CloudFormation stack
           BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name mdq-frontend-${{ env.ENVIRONMENT }} --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text)
           DIST_ID=$(aws cloudformation describe-stacks --stack-name mdq-frontend-${{ env.ENVIRONMENT }} --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" --output text)
-          ALB_URL=$(aws cloudformation describe-stacks --stack-name mdq-api-${{ env.ENVIRONMENT }} --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" --output text)
 
           # Pass them to the next steps
           echo "bucket=$BUCKET_NAME" >> $GITHUB_OUTPUT
           echo "distribution=$DIST_ID" >> $GITHUB_OUTPUT
-          echo "alb_url=$ALB_URL/api" >> $GITHUB_OUTPUT
 
       - name: Build Vite App
         env:
-          VITE_API_BASE_URL: ${{ steps.infra.outputs.alb_url }} # Inject the API URL into the build
+          VITE_API_BASE_URL: ${{ vars.ALB_URL }} # Inject the API URL into the build
         run: npm run build
 
       - name: Deploy to S3

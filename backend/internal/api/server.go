@@ -48,6 +48,7 @@ func (s *Server) SetupHandler() http.Handler {
 		AllowedOrigins: []string{
 			"http://localhost:5173",    // Local Vite dev
 			"https://*.cloudfront.net", // Production (you can narrow this to your specific URL later)
+			"https://*.amoritacleaning.com", // Production (you can narrow this to your specific URL later)
 		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
