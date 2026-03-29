@@ -159,7 +159,8 @@ Resources:
           AssignPublicIp: ENABLED
           SecurityGroups:
             - !GetAtt ApiSecurityGroup.GroupId
-            - !ImportValue FargateSecurityGroupId
+            - Fn::ImportValue:
+                Fn::Sub: "${EnvironmentName}-FargateSecurityGroupId"
           Subnets: !Ref Subnets
       LoadBalancers:
         - ContainerName: api

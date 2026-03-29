@@ -177,7 +177,8 @@ Outputs:
     Value: !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2]]
   FargateSecurityGroupId:
     Value: !GetAtt FargateSecurityGroup.GroupId
-  # Updated output to match the new DBInstance endpoint structure
+    Export: 
+      Name: !Sub "${EnvironmentName}-FargateSecurityGroupId"
   DatabaseUrl:
     Value: !Sub "postgres://${DBMasterUser}:${DBMasterPassword}@${PostgresInstance.Endpoint.Address}:${PostgresInstance.Endpoint.Port}/taskqueue?sslmode=require"
   RedisUrl:
