@@ -53,7 +53,7 @@ jobs:
           # Pass them to the next steps
           echo "bucket=$BUCKET_NAME" >> $GITHUB_OUTPUT
           echo "distribution=$DIST_ID" >> $GITHUB_OUTPUT
-          echo "alb_url=$ALB_URL" >> $GITHUB_OUTPUT
+          echo "alb_url=$ALB_URL/api" >> $GITHUB_OUTPUT
 
       - name: Build Vite App
         env:
