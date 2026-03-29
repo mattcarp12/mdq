@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,6 +40,11 @@ func main() {
 	if jwtSecret == "" {
 		// In local dev, you can set this in your devcontainer.json or .bashrc
 		log.Fatal("FATAL: JWT_SECRET environment variable is required")
+	}
+	allowedOriginsStr := os.Getenv("ALLOWED_ORIGINS") // Comma-separated list of allowed origins for CORS
+	allowedOrigins := []string{}
+	if allowedOriginsStr != "" {
+		allowedOrigins = strings.Split(allowedOriginsStr, ",")
 	}
 	env := os.Getenv("ENV")
 	if env == "" {
@@ -84,7 +90,7 @@ func main() {
 	userRepo := repository.NewPostgresUserRepository(pgPool)
 	producer := queue.NewRedisProducer(redisClient, "mdq:jobs")
 
-	server := api.NewServer(jobRepo, userRepo, producer, []byte(jwtSecret))
+	server := api.NewServer(jobRepo, userRepo, producer, []byte(jwtSecret), allowedOrigins)
 
 	// 6. Setup Routing
 	mux := http.NewServeMux()

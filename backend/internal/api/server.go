@@ -10,19 +10,21 @@ import (
 
 // Server holds all the dependencies required by our HTTP handlers.
 type Server struct {
-	JobRepo       repository.JobRepository
-	QueueProducer queue.Producer
-	UserRepo      repository.UserRepository
-	jwtSecret     []byte
+	JobRepo        repository.JobRepository
+	QueueProducer  queue.Producer
+	UserRepo       repository.UserRepository
+	jwtSecret      []byte
+	AllowedOrigins []string
 }
 
 // NewServer is the constructor for our API server.
-func NewServer(repo repository.JobRepository, userRepo repository.UserRepository, queueProducer queue.Producer, jwtSecret []byte) *Server {
+func NewServer(repo repository.JobRepository, userRepo repository.UserRepository, queueProducer queue.Producer, jwtSecret []byte, allowedOrigins []string) *Server {
 	return &Server{
 		JobRepo:       repo,
 		QueueProducer: queueProducer,
 		UserRepo:      userRepo,
 		jwtSecret:     jwtSecret,
+		AllowedOrigins: allowedOrigins,
 	}
 }
 
@@ -46,8 +48,8 @@ func (s *Server) SetupHandler() http.Handler {
 	c := cors.New(cors.Options{
 		// TODO: In a true SOTA app, you'd load these from an ENV var
 		AllowedOrigins: []string{
-			"http://localhost:5173",    // Local Vite dev
-			"https://*.cloudfront.net", // Production (you can narrow this to your specific URL later)
+			"http://localhost:5173",         // Local Vite dev
+			"https://*.cloudfront.net",      // Production (you can narrow this to your specific URL later)
 			"https://*.amoritacleaning.com", // Production (you can narrow this to your specific URL later)
 		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
