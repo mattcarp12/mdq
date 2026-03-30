@@ -2,22 +2,22 @@ name: Deploy Backend
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
     paths:
-      - 'backend/**'                               # Triggers on any change inside the backend folder
-      - '.github/workflows/deploy-backend.yml'     # Triggers if you update this specific pipeline file
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
     paths:
-      - 'backend/**'
-      - '.github/workflows/deploy-backend.yml'
-  workflow_dispatch: # Keeps your manual trigger button intact
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
 
 env:
   AWS_REGION: us-west-2
   PROJECT_NAME: carpecode-task-queue
+  ENVIRONMENT: dev # NEW: Drives our deterministic naming
 
-# CRITICAL: We need 'write' permissions on id-token to request the OIDC JWT from GitHub
 permissions:
   id-token: write
   contents: read
@@ -26,18 +26,17 @@ jobs:
   test:
     name: Lint & Test Go Code
     runs-on: ubuntu-latest
-    # Tell GitHub to run all commands in this job inside the backend folder
     defaults:
       run:
-        working-directory: ./backend 
+        working-directory: ./backend
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
-          
+          go-version: "1.24"
+
       - name: Run Tests
         run: |
           go mod tidy
@@ -46,7 +45,6 @@ jobs:
   build-and-push:
     name: Build & Push to Amazon ECR
     needs: test
-    # Run on push to main OR when manually triggered via workflow_dispatch
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -65,13 +63,10 @@ jobs:
       - name: Build, tag, and push API image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }} # Use the git commit hash for versioning
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Build the API (Updated to use the backend/ context)
           docker build --build-arg APP_NAME=api -t $ECR_REGISTRY/$PROJECT_NAME-api:$IMAGE_TAG -f backend/Dockerfile backend/
           docker push $ECR_REGISTRY/$PROJECT_NAME-api:$IMAGE_TAG
-          
-          # Tag as latest and push
           docker tag $ECR_REGISTRY/$PROJECT_NAME-api:$IMAGE_TAG $ECR_REGISTRY/$PROJECT_NAME-api:latest
           docker push $ECR_REGISTRY/$PROJECT_NAME-api:latest
 
@@ -80,10 +75,52 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Build the Worker (Updated to use the backend/ context)
           docker build --build-arg APP_NAME=worker -t $ECR_REGISTRY/$PROJECT_NAME-worker:$IMAGE_TAG -f backend/Dockerfile backend/
           docker push $ECR_REGISTRY/$PROJECT_NAME-worker:$IMAGE_TAG
-          
-          # Tag as latest and push
           docker tag $ECR_REGISTRY/$PROJECT_NAME-worker:$IMAGE_TAG $ECR_REGISTRY/$PROJECT_NAME-worker:latest
           docker push $ECR_REGISTRY/$PROJECT_NAME-worker:latest
+
+      # NEW: Ephemeral Migration Task
+      - name: Run Database Migrations (Ephemeral Task)
+        run: |
+          echo "Fetching network configuration from CloudFormation..."
+          SUBNETS=$(aws cloudformation describe-stacks --stack-name mdq-state-${{ env.ENVIRONMENT }} --query "Stacks[0].Outputs[?OutputKey=='PublicSubnetIds'].OutputValue" --output text)
+          SG=$(aws cloudformation describe-stacks --stack-name mdq-state-${{ env.ENVIRONMENT }} --query "Stacks[0].Outputs[?OutputKey=='FargateSecurityGroupId'].OutputValue" --output text)
+          
+          echo "Starting ephemeral Fargate migration task..."
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ env.ENVIRONMENT }}-mdq-cluster \
+            --task-definition ${{ env.ENVIRONMENT }}-mdq-api \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
+            --overrides '{"containerOverrides": [{"name": "api", "command": ["-migrate"]}]}' \
+            --query "tasks[0].taskArn" \
+            --output text)
+          
+          echo "Migration task started: $TASK_ARN"
+          echo "Waiting for task to complete (this may take 1-2 minutes)..."
+          
+          aws ecs wait tasks-stopped \
+            --cluster ${{ env.ENVIRONMENT }}-mdq-cluster \
+            --tasks $TASK_ARN
+          
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ env.ENVIRONMENT }}-mdq-cluster \
+            --tasks $TASK_ARN \
+            --query "tasks[0].containers[0].exitCode" \
+            --output text)
+            
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "FATAL: Database migration failed with exit code $EXIT_CODE."
+            exit 1
+          fi
+          
+          echo "Database migration completed successfully!"
+
+      # UPDATED: Use deterministic naming for the deployment restart
+      - name: Force ECS Deployment
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ENVIRONMENT }}-mdq-cluster \
+            --service mdq-api-service \
+            --force-new-deployment
