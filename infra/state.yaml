@@ -170,6 +170,14 @@ Resources:
       VpcSecurityGroupIds:
         - !GetAtt RedisSecurityGroup.GroupId
 
+  AppSecretsNew:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub "mdq/${EnvironmentName}/api-secrets"
+      Description: "Secrets for MDQ Task Queue application"
+
 Outputs:
   VpcId:
     Value: !Ref VPC
@@ -179,7 +187,7 @@ Outputs:
     Value: !GetAtt FargateSecurityGroup.GroupId
     Export: 
       Name: !Sub "${EnvironmentName}-FargateSecurityGroupId"
-  DatabaseUrl:
-    Value: !Sub "postgres://${DBMasterUser}:${DBMasterPassword}@${PostgresInstance.Endpoint.Address}:${PostgresInstance.Endpoint.Port}/taskqueue?sslmode=require"
-  RedisUrl:
-    Value: !Sub "redis://${RedisCluster.RedisEndpoint.Address}:${RedisCluster.RedisEndpoint.Port}/0"
+  AppSecretsArn:
+    Value: !Ref AppSecretsNew
+    Export:
+      Name: !Sub "mdq-state-${EnvironmentName}-AppSecretsArn"

@@ -30,15 +30,20 @@ create-ecr: ## Create ECR repositories
 	aws ecr create-repository --repository-name carpecode-task-queue-worker --region $(AWS_REGION) || true
 
 deploy-state: ## Deploy VPC, Aurora, and Redis
-	aws cloudformation deploy --template-file infra/state.yaml --stack-name $(STATE_STACK) --region $(AWS_REGION) --parameter-overrides EnvironmentName=$(ENVIRONMENT) DBMasterUser=$(DB_USER) DBMasterPassword=$(DB_PASS)
+	aws cloudformation deploy \
+		--template-file infra/state.yaml \
+		--stack-name $(STATE_STACK) \
+		--region $(AWS_REGION) \
+		--parameter-overrides \
+			EnvironmentName=$(ENVIRONMENT) \
+			DBMasterUser=$(DB_USER) \
+			DBMasterPassword=$(DB_PASS)
 
 # --- Compute & UI ---
 deploy-api: ## Deploy Fargate API using outputs from the State stack
 	@echo "Fetching state outputs..."
 	$(eval VPC_ID := $(shell aws cloudformation describe-stacks --stack-name $(STATE_STACK) --query "Stacks[0].Outputs[?OutputKey=='VpcId'].OutputValue" --output text))
 	$(eval SUBNETS := $(shell aws cloudformation describe-stacks --stack-name $(STATE_STACK) --query "Stacks[0].Outputs[?OutputKey=='PublicSubnetIds'].OutputValue" --output text))
-	$(eval DB_URL := $(shell aws cloudformation describe-stacks --stack-name $(STATE_STACK) --query "Stacks[0].Outputs[?OutputKey=='DatabaseUrl'].OutputValue" --output text))
-	$(eval REDIS_URL := $(shell aws cloudformation describe-stacks --stack-name $(STATE_STACK) --query "Stacks[0].Outputs[?OutputKey=='RedisUrl'].OutputValue" --output text))
 	
 	@echo "Deploying API Fargate Service..."
 	aws cloudformation deploy \
@@ -51,9 +56,6 @@ deploy-api: ## Deploy Fargate API using outputs from the State stack
 			VpcId=$(VPC_ID) \
 			Subnets=$(SUBNETS) \
 			ApiImageUrl=$(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/carpecode-task-queue-api:latest \
-			DatabaseUrl="$(DB_URL)" \
-			RedisUrl="$(REDIS_URL)" \
-			JwtSecret=$(JWT_SECRET) \
 			AlbCertificateArn=$(ALB_CERTIFICATE_ARN)
 
 deploy-frontend: ## Deploy S3 and CloudFront CDN

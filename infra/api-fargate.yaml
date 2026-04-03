@@ -15,18 +15,6 @@ Parameters:
   ApiImageUrl:
     Type: String
     Description: The ECR URI of the API Docker image
-  DatabaseUrl:
-    Type: String
-    NoEcho: true # Keeps the password out of AWS console logs
-    Description: PostgreSQL connection string
-  RedisUrl:
-    Type: String
-    NoEcho: true
-    Description: Redis connection string
-  JwtSecret:
-    Type: String
-    NoEcho: true
-    Description: Secret key for signing JWTs
   AlbCertificateArn:
     Type: String
     NoEcho: true
@@ -110,6 +98,17 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'secretsmanager:GetSecretValue'
+                Resource: 
+                  Fn::ImportValue:
+                    !Sub "mdq-state-${EnvironmentName}-AppSecretsArn"
+
 
   # 5. The Fargate Task Definition (How to run your specific Docker image)
   ApiTaskDefinition:
@@ -132,12 +131,26 @@ Resources:
             # 12-Factor: Injecting state via environment variables
             - Name: PORT
               Value: "8080"
-            - Name: DATABASE_URL
-              Value: !Ref DatabaseUrl
-            - Name: REDIS_URL
-              Value: !Ref RedisUrl
+          Secrets:
             - Name: JWT_SECRET
-              Value: !Ref JwtSecret
+              ValueFrom: 
+                Fn::Sub:
+                  - "${SecretArn}:JWT_SECRET::"
+                  - SecretArn: 
+                      Fn::ImportValue: !Sub "mdq-state-${EnvironmentName}-AppSecretsArn"
+            - Name: DATABASE_URL
+              ValueFrom: 
+                Fn::Sub:
+                  - "${SecretArn}:DATABASE_URL::"
+                  - SecretArn: 
+                      Fn::ImportValue: !Sub "mdq-state-${EnvironmentName}-AppSecretsArn"
+            - Name: REDIS_URL
+              ValueFrom: 
+                Fn::Sub:
+                  - "${SecretArn}:REDIS_URL::"
+                  - SecretArn: 
+                      Fn::ImportValue: !Sub "mdq-state-${EnvironmentName}-AppSecretsArn"
+
           LogConfiguration:
             LogDriver: awslogs
             Options:
