@@ -56,7 +56,8 @@ deploy-api: ## Deploy Fargate API using outputs from the State stack
 			VpcId=$(VPC_ID) \
 			Subnets=$(SUBNETS) \
 			ApiImageUrl=$(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/carpecode-task-queue-api:latest \
-			AlbCertificateArn=$(ALB_CERTIFICATE_ARN)
+			AlbCertificateArn=$(ALB_CERTIFICATE_ARN) \
+			AllowedOrigins=$(ALLOWED_ORIGINS)
 
 deploy-frontend: ## Deploy S3 and CloudFront CDN
 	aws cloudformation deploy --template-file infra/frontend-cdn.yaml --stack-name $(FRONTEND_STACK) --region $(AWS_REGION) --parameter-overrides EnvironmentName=$(ENVIRONMENT)

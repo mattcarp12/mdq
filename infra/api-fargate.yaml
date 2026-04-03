@@ -19,6 +19,9 @@ Parameters:
     Type: String
     NoEcho: true
     Description: The ARN of the self-signed certificate imported into ACM
+  AllowedOrigins:
+    Type: String
+    Description: List of allowed CORS origins for the API
 
 Resources:
   # 1. The ECS Cluster (The logical grouping of your containers)
@@ -131,6 +134,8 @@ Resources:
             # 12-Factor: Injecting state via environment variables
             - Name: PORT
               Value: "8080"
+            - Name: ALLOWED_ORIGINS
+              Value: !Ref AllowedOrigins
           Secrets:
             - Name: JWT_SECRET
               ValueFrom: 
