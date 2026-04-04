@@ -17,10 +17,12 @@ type CreateJobParams struct {
 }
 
 type JobRepository interface {
-	// Notice we pass Params by value (immutable) and return a new Job by value
 	CreateJob(ctx context.Context, params CreateJobParams) (models.Job, error)
 	UpdateJobStatus(ctx context.Context, id string, status models.JobStatus) error
 	GetJobsByUser(ctx context.Context, userID string) ([]models.Job, error)
+	GetJobByID(ctx context.Context, id string) (models.Job, error)
+	UpdateJobState(ctx context.Context, id string, status string, result *string, errorDetails *string) error
+	IncrementJobRetry(ctx context.Context, id string) error
 }
 
 type postgresJobRepo struct {
@@ -131,4 +133,72 @@ func (r *postgresJobRepo) GetJobsByUser(ctx context.Context, userID string) ([]m
 	}
 
 	return jobs, nil
+}
+
+func (r *postgresJobRepo) GetJobByID(ctx context.Context, id string) (models.Job, error) {
+	query := `
+		SELECT id, type, payload, status, result, error_details, max_retries, retries_attempted, run_at, created_at, updated_at
+		FROM jobs 
+		WHERE id = $1
+	`
+
+	var job models.Job
+
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&job.ID,
+		&job.Type,
+		&job.Payload,
+		&job.Status,
+		&job.Result,
+		&job.ErrorDetails,
+		&job.MaxRetries,
+		&job.RetriesAttempted,
+		&job.RunAt,
+		&job.CreatedAt,
+		&job.UpdatedAt,
+	)
+
+	if err != nil {
+		return models.Job{}, fmt.Errorf("failed to get job by ID: %w", err)
+	}
+
+	return job, nil
+}
+
+func (r *postgresJobRepo) UpdateJobState(ctx context.Context, id string, status string, result *string, errorDetails *string) error {
+	query := `
+		UPDATE jobs 
+		SET status = $1, result = $2, error_details = $3, updated_at = NOW()
+		WHERE id = $4
+	`
+
+	commandTag, err := r.db.Exec(ctx, query, status, result, errorDetails, id)
+	if err != nil {
+		return fmt.Errorf("failed to update job state: %w", err)
+	}
+
+	if commandTag.RowsAffected() == 0 {
+		return fmt.Errorf("job with id %s not found", id)
+	}
+
+	return nil
+}
+
+func (r *postgresJobRepo) IncrementJobRetry(ctx context.Context, id string) error {
+	query := `
+		UPDATE jobs 
+		SET retries_attempted = retries_attempted + 1, updated_at = NOW()
+		WHERE id = $1
+	`
+
+	commandTag, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to increment job retry: %w", err)
+	}
+
+	if commandTag.RowsAffected() == 0 {
+		return fmt.Errorf("job with id %s not found", id)
+	}
+
+	return nil
 }
