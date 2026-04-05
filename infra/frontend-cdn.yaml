@@ -5,6 +5,9 @@ Parameters:
   EnvironmentName:
     Type: String
     Default: dev
+  CustomDomainName:
+    Type: String
+    Description: The custom domain for the frontend (e.g. www.example.com)
   CfCertificateArn:
     Type: String
     NoEcho: true
@@ -42,6 +45,8 @@ Resources:
         HttpVersion: http2and3
         # CRITICAL FOR REACT ROUTER: If CloudFront doesn't find a file (like /dashboard), 
         # it returns 404. We catch that 404 and return index.html so React can handle the route.
+        Aliases:
+          - !Sub ${CustomDomainName}
         CustomErrorResponses:
           - ErrorCode: 404
             ResponseCode: 200
@@ -73,6 +78,7 @@ Resources:
           AcmCertificateArn: !Sub ${CfCertificateArn}
           SslSupportMethod: sni-only
           MinimumProtocolVersion: TLSv1.2_2021
+
 
   # 4. The Bucket Policy allowing CloudFront to read the files
   FrontendBucketPolicy:

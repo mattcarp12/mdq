@@ -67,6 +67,7 @@ deploy-frontend: ## Deploy S3 and CloudFront CDN
 		--region $(AWS_REGION) \
 		--parameter-overrides \
 			EnvironmentName=$(ENVIRONMENT) \
+			CustomDomainName=$(CUSTOM_DOMAIN_NAME) \
 			CfCertificateArn=$(CF_CERTIFICATE_ARN)
 
 # --- Destroyers ---

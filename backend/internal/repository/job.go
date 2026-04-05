@@ -18,10 +18,9 @@ type CreateJobParams struct {
 
 type JobRepository interface {
 	CreateJob(ctx context.Context, params CreateJobParams) (models.Job, error)
-	UpdateJobStatus(ctx context.Context, id string, status models.JobStatus) error
 	GetJobsByUser(ctx context.Context, userID string) ([]models.Job, error)
 	GetJobByID(ctx context.Context, id string) (models.Job, error)
-	UpdateJobState(ctx context.Context, id string, status string, result *string, errorDetails *string) error
+	UpdateJobState(ctx context.Context, id string, status models.JobStatus, result *string, errorDetails *string) error
 	IncrementJobRetry(ctx context.Context, id string) error
 }
 
@@ -67,26 +66,6 @@ func (r *postgresJobRepo) CreateJob(ctx context.Context, params CreateJobParams)
 	}
 
 	return job, nil
-}
-
-// UpdateJobStatus is used by the workers to transition a job from PENDING -> RUNNING -> COMPLETED.
-func (r *postgresJobRepo) UpdateJobStatus(ctx context.Context, id string, status models.JobStatus) error {
-	query := `
-		UPDATE jobs 
-		SET status = $1, updated_at = NOW()
-		WHERE id = $2
-	`
-
-	commandTag, err := r.db.Exec(ctx, query, status, id)
-	if err != nil {
-		return fmt.Errorf("failed to update job status: %w", err)
-	}
-
-	if commandTag.RowsAffected() == 0 {
-		return fmt.Errorf("job with id %s not found", id)
-	}
-
-	return nil
 }
 
 func (r *postgresJobRepo) GetJobsByUser(ctx context.Context, userID string) ([]models.Job, error) {
@@ -165,7 +144,7 @@ func (r *postgresJobRepo) GetJobByID(ctx context.Context, id string) (models.Job
 	return job, nil
 }
 
-func (r *postgresJobRepo) UpdateJobState(ctx context.Context, id string, status string, result *string, errorDetails *string) error {
+func (r *postgresJobRepo) UpdateJobState(ctx context.Context, id string, status models.JobStatus, result *string, errorDetails *string) error {
 	query := `
 		UPDATE jobs 
 		SET status = $1, result = $2, error_details = $3, updated_at = NOW()
