@@ -24,6 +24,10 @@ func main() {
 	flag.Parse()
 
 	// 2. Load Environment Variables
+	env := os.Getenv("ENV")
+	if env == "" {
+		env = "local"
+	}
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		dbURL = "postgres://devuser:devpassword@localhost:5432/taskqueue?sslmode=disable"
@@ -38,18 +42,18 @@ func main() {
 	}
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		// In local dev, you can set this in your devcontainer.json or .bashrc
-		log.Fatal("FATAL: JWT_SECRET environment variable is required")
+		if env == "local" {
+			jwtSecret = "devsecretkey"
+		} else {
+			log.Fatal("FATAL: JWT_SECRET environment variable is required")
+		}
 	}
 	allowedOriginsStr := os.Getenv("ALLOWED_ORIGINS") // Comma-separated list of allowed origins for CORS
 	allowedOrigins := []string{}
 	if allowedOriginsStr != "" {
 		allowedOrigins = strings.Split(allowedOriginsStr, ",")
 	}
-	env := os.Getenv("ENV")
-	if env == "" {
-		env = "development"
-	}
+	
 	var logger *slog.Logger
 	if env == "production" {
 		logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))

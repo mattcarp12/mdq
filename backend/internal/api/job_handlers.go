@@ -85,3 +85,30 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		"data": jobs,
 	})
 }
+
+func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
+	// Extract the UserID securely placed by the AuthMiddleware
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok || userID == "" {
+		slog.Error("UserID missing in context")
+		http.Error(w, `{"error": "unauthorized context"}`, http.StatusUnauthorized)
+		return
+	}
+
+	jobID := r.URL.Path[len("/api/v1/jobs/"):]
+	if jobID == "" {
+		http.Error(w, `{"error": "job ID is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	job, err := s.JobRepo.GetJobByID(r.Context(), jobID)
+	if err != nil {
+		slog.Error("Failed to retrieve job by ID", "jobID", jobID, "error", err.Error())
+		http.Error(w, `{"error": "internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(job)
+}

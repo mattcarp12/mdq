@@ -33,6 +33,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Protected routes require authentication middleware
 	mux.HandleFunc("POST /api/v1/jobs", s.AuthMiddleware(s.handleCreateJob))
 	mux.HandleFunc("GET /api/v1/jobs", s.AuthMiddleware(s.handleListJobs))
+	mux.HandleFunc("GET /api/v1/jobs/", s.AuthMiddleware(s.handleGetJob)) // Note: This will match /api/v1/jobs/{id}
 
 	// Public routes
 	mux.HandleFunc("POST /api/v1/login", s.handleLogin)
