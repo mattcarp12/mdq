@@ -1,9 +1,12 @@
 package api
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/mattcarp12/mdq/internal/metrics"
 )
 
 // responseRecorder wraps http.ResponseWriter to capture the status code
@@ -32,6 +35,11 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.HandlerFunc {
 		next.ServeHTTP(rec, r)
 
 		duration := time.Since(start)
+
+		// Record Prometheus metrics
+		statusStr := fmt.Sprintf("%d", rec.statusCode)
+		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, r.URL.Path, statusStr).Inc()
+		metrics.HTTPRequestDuration.WithLabelValues(r.Method, r.URL.Path).Observe(duration.Seconds())
 
 		// Structured logging with key-value pairs
 		slog.Info("HTTP Request",

@@ -56,7 +56,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]any{
 		"message": "Job queued successfully",
-		"job_id":  job.ID,
+		"id":  job.ID,
 		"status":  job.Status,
 	})
 }

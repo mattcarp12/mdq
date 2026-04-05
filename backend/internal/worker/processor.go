@@ -7,32 +7,33 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/mattcarp12/mdq/internal/metrics"
 	"github.com/mattcarp12/mdq/internal/models"
 	"github.com/mattcarp12/mdq/internal/repository"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 type Processor struct {
-	redisClient       *redis.Client
-	jobRepo           repository.JobRepository
-	handlers          map[string]TaskHandler
-	streamName        string
-	groupName         string
-	consumerID        string
-	minIdleTime       time.Duration
-	autoclaimInterval time.Duration
+	redisClient *redis.Client
+	jobRepo     repository.JobRepository
+	handlers    map[string]TaskHandler
+	streamName  string
+	groupName   string
+	consumerID  string
+	minIdleTime time.Duration
 }
 
 func NewProcessor(rc *redis.Client, repo repository.JobRepository, stream, group, consumer string) *Processor {
 	return &Processor{
-		redisClient:       rc,
-		jobRepo:           repo,
-		handlers:          GetHandlers(),
-		streamName:        stream,
-		groupName:         group,
-		consumerID:        consumer,
-		minIdleTime:       5 * time.Minute, // If a job sits un-ACK'd for 5 mins, it's dead
-		autoclaimInterval: 1 * time.Minute, // Check for dead jobs every 60 seconds
+		redisClient: rc,
+		jobRepo:     repo,
+		handlers:    GetHandlers(),
+		streamName:  stream,
+		groupName:   group,
+		consumerID:  consumer,
+		minIdleTime: 1 * time.Minute, // If a job sits un-ACK'd for 1 mins, it can be XAUTOCLAIM'd
 	}
 }
 
@@ -45,8 +46,6 @@ func (p *Processor) Start(ctx context.Context) {
 
 	slog.Info("Worker started processing...", slog.String("consumer_id", p.consumerID))
 
-	lastClaim := time.Now()
-
 	// The SOTA Unified Event Loop: Clean, readable, and delegates the heavy lifting
 	for {
 		select {
@@ -55,10 +54,7 @@ func (p *Processor) Start(ctx context.Context) {
 			return
 		default:
 			// 1. Check for abandoned jobs
-			if time.Since(lastClaim) > p.autoclaimInterval {
-				p.handleAbandonedMessages(ctx)
-				lastClaim = time.Now()
-			}
+			p.handleAbandonedMessages(ctx)
 
 			// 2. Poll for new jobs
 			streams, err := p.dequeueMessages(ctx)
@@ -134,6 +130,22 @@ func (p *Processor) dequeueMessages(ctx context.Context) ([]redis.XStream, error
 // -----------------------------------------------------------------------------
 
 func (p *Processor) processMessage(ctx context.Context, msg redis.XMessage) {
+	// 1. Extract the trace string from Redis
+	traceparent, _ := msg.Values["traceparent"].(string)
+
+	// 2. Rebuild the carrier
+	carrier := propagation.MapCarrier{
+		"traceparent": traceparent,
+	}
+
+	// 3. OVERWRITE the Go context with the extracted trace data
+	ctx = otel.GetTextMapPropagator().Extract(ctx, carrier)
+
+	// 4. Start your new Span. Jaeger will now link this to the API's trace!
+	tracer := otel.Tracer("mdq-worker")
+	ctx, span := tracer.Start(ctx, "ProcessJob: "+msg.Values["type"].(string))
+	defer span.End()
+
 	jobID, ok := msg.Values["job_id"].(string)
 	if !ok {
 		slog.Error("invalid message format in redis", slog.String("msg_id", msg.ID))
@@ -147,6 +159,26 @@ func (p *Processor) processMessage(ctx context.Context, msg redis.XMessage) {
 		return
 	}
 
+	// -----------------------------------------------------------------
+	// Prevent overwriting finished jobs ("At-Least-Once" Guard)
+	// -----------------------------------------------------------------
+	if job.Status == models.StatusCompleted || job.Status == models.StatusFailed {
+		slog.Info("job already finished, acking stuck message",
+			slog.String("job_id", jobID),
+			slog.String("status", string(job.Status)))
+
+		p.redisClient.XAck(ctx, p.streamName, p.groupName, msg.ID)
+		return
+	}
+
+	// Track active jobs and processing duration for the entire lifecycle of this call.
+	metrics.WorkerActiveJobs.Inc()
+	jobStart := time.Now()
+	defer func() {
+		metrics.WorkerActiveJobs.Dec()
+		metrics.JobProcessingDuration.WithLabelValues(job.Type).Observe(time.Since(jobStart).Seconds())
+	}()
+
 	if err := p.jobRepo.UpdateJobState(ctx, jobID, models.StatusRunning, nil, nil); err != nil {
 		slog.Error("failed to update job to RUNNING", slog.String("error", err.Error()))
 	}
@@ -159,6 +191,7 @@ func (p *Processor) processMessage(ctx context.Context, msg redis.XMessage) {
 		if err := p.jobRepo.UpdateJobState(ctx, jobID, models.StatusFailed, nil, &errorMsg); err != nil {
 			slog.Error("failed to update job to FAILED", slog.String("error", err.Error()))
 		}
+		metrics.JobsProcessedTotal.WithLabelValues(job.Type, "failed").Inc()
 		p.redisClient.XAck(ctx, p.streamName, p.groupName, msg.ID)
 		return
 	}
@@ -177,18 +210,21 @@ func (p *Processor) processMessage(ctx context.Context, msg redis.XMessage) {
 			if err := p.jobRepo.UpdateJobState(ctx, jobID, models.StatusFailed, nil, &errMsgJSON); err != nil {
 				slog.Error("failed to update job to FAILED", slog.String("error", err.Error()))
 			}
+			metrics.JobsProcessedTotal.WithLabelValues(job.Type, "failed").Inc()
 			p.redisClient.XAck(ctx, p.streamName, p.groupName, msg.ID)
 		} else {
 			if err := p.jobRepo.UpdateJobState(ctx, jobID, models.StatusRetrying, nil, &errMsgJSON); err != nil {
 				slog.Error("failed to update job to RETRYING", slog.String("error", err.Error()))
 			}
+			metrics.JobRetriesTotal.WithLabelValues(job.Type).Inc()
 		}
 	} else {
 		resultMsg := `{"message": "Successfully processed"}`
-		if err := p.jobRepo.UpdateJobState(ctx, jobID, models.StatusCompleted, &resultMsg, nil); err != nil {
+		err := p.jobRepo.UpdateJobState(ctx, jobID, models.StatusCompleted, &resultMsg, nil)
+		if err != nil {
 			slog.Error("failed to update job to COMPLETED", slog.String("error", err.Error()))
-		} else {
-			p.redisClient.XAck(ctx, p.streamName, p.groupName, msg.ID)
 		}
+		metrics.JobsProcessedTotal.WithLabelValues(job.Type, "completed").Inc()
+		p.redisClient.XAck(ctx, p.streamName, p.groupName, msg.ID)
 	}
 }

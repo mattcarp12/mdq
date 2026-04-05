@@ -5,7 +5,9 @@ import (
 
 	"github.com/mattcarp12/mdq/internal/queue"
 	"github.com/mattcarp12/mdq/internal/repository"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Server holds all the dependencies required by our HTTP handlers.
@@ -45,6 +47,10 @@ func (s *Server) SetupHandler() http.Handler {
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 
+	// /metrics is registered directly on the mux, outside the logging middleware,
+	// so Prometheus scrapes don't flood your request logs.
+	mux.Handle("GET /metrics", promhttp.Handler())
+
 	// Configure CORS
 	c := cors.New(cors.Options{
 		AllowedOrigins:   s.AllowedOrigins,
@@ -55,8 +61,12 @@ func (s *Server) SetupHandler() http.Handler {
 		MaxAge:           300, // Maximum value for preflight request caching
 	})
 
-	// Wrap the entire mux in the LoggingMiddleware
-	return s.LoggingMiddleware(c.Handler(mux))
+	// Wrap the mux with OTel HTTP instrumentation
+	// This automatically creates a Span for every incoming HTTP request!
+	tracedHandler := otelhttp.NewHandler(mux, "http.server")
+
+	// Chain the middleware: CORS -> Logger -> Tracer -> Mux
+	return s.LoggingMiddleware(c.Handler(tracedHandler))
 }
 
 func (s *Server) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {

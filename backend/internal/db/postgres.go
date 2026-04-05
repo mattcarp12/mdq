@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // NewPostgresPool creates and returns a highly-concurrent connection pool.
-// In robust, distributed systems, connection pooling is critical to prevent 
+// In robust, distributed systems, connection pooling is critical to prevent
 // database connection exhaustion under heavy load.
 func NewPostgresPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
@@ -19,6 +20,8 @@ func NewPostgresPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, er
 
 	// SOTA Tip: You can tune config.MaxConns here based on your worker count
 	// and API load later when deploying to AWS.
+
+	config.ConnConfig.Tracer = otelpgx.NewTracer()
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {

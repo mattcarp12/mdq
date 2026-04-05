@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	totalJobs       = 100 // How many jobs to create
+	totalJobs       = 300 // How many jobs to create
 	concurrentUsers = 10  // How many simultaneous connections
 )
 
@@ -47,7 +47,7 @@ type CreateJobRequest struct {
 }
 
 type JobResponse struct {
-	ID     string `json:"job_id"`
+	ID     string `json:"id"`
 	Status string `json:"status"`
 }
 
@@ -135,6 +135,7 @@ func main() {
 			if status == "COMPLETED" || status == "FAILED" {
 				slog.Info("Job finished", slog.String("id", id), slog.String("final_status", status))
 			} else {
+				slog.Info("Job still pending. Adding to remaining jobs.", slog.String("id", id), slog.String("current_status", status))
 				remainingJobs = append(remainingJobs, id)
 			}
 		}
@@ -179,8 +180,8 @@ func login() (string, error) {
 func createJob(token string) (string, error) {
 	jobURL := fmt.Sprintf("%s/api/v1/jobs", serverURL)
 	reqBody := CreateJobRequest{
-		Type:    "video_process",
-		Payload: json.RawMessage(`{"video_url": "s3://bucket/test.mp4"}`),
+		Type:    "create_thumbnail",
+		Payload: json.RawMessage(`{"image_url": "s3://bucket/test.png"}`),
 	}
 	jsonData, _ := json.Marshal(reqBody)
 

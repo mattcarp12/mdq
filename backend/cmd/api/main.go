@@ -14,8 +14,10 @@ import (
 
 	"github.com/mattcarp12/mdq/internal/api"
 	"github.com/mattcarp12/mdq/internal/db"
+	"github.com/mattcarp12/mdq/internal/metrics"
 	"github.com/mattcarp12/mdq/internal/queue"
 	"github.com/mattcarp12/mdq/internal/repository"
+	"github.com/mattcarp12/mdq/internal/telemetry"
 )
 
 func main() {
@@ -53,7 +55,11 @@ func main() {
 	if allowedOriginsStr != "" {
 		allowedOrigins = strings.Split(allowedOriginsStr, ",")
 	}
-	
+	jaegerUrl := os.Getenv("JAEGER_URL")
+	if jaegerUrl == "" {
+		jaegerUrl = "localhost:4318"
+	}
+
 	var logger *slog.Logger
 	if env == "production" {
 		logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -63,7 +69,23 @@ func main() {
 
 	slog.SetDefault(logger)
 
+	// Initialize OpenTelemetry
+	tp, err := telemetry.InitProvider("mdq-api", jaegerUrl)
+	if err != nil {
+		slog.Error("Failed to initialize telemetry", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	// Ensure all buffered spans are flushed before the application exits
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			slog.Error("Error shutting down tracer provider", slog.String("error", err.Error()))
+		}
+	}()
+
 	slog.Info("Starting MDQ API server...", slog.String("port", port), slog.String("env", env))
+
+	// Register Prometheus Metrics
+	metrics.Register()
 
 	// 3. Handle Migrations
 	if *runMigrations {
@@ -101,13 +123,13 @@ func main() {
 	server.RegisterRoutes(mux)
 
 	httpServer := &http.Server{
-		Addr:    ":" + port,
+		Addr:    "0.0.0.0:" + port,
 		Handler: server.SetupHandler(),
 	}
 
 	// 7. Start Server
 	go func() {
-		slog.Info("MDQ API Server starting on port %s...", slog.String("port", port))
+		slog.Info("MDQ API Server starting on port %s...", slog.String("address", httpServer.Addr))
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("Server failed", slog.Any("error", err))
 		}

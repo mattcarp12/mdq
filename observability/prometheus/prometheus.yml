@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s # How often to poll your apps
+  evaluation_interval: 15s
+
+scrape_configs:
+  # The API Server
+  - job_name: 'mdq-api'
+    static_configs:
+      # In Docker Compose, the service name 'api' resolves to the container's IP
+      - targets: ['host.docker.internal:8080'] 
+
+  # The Background Worker
+  - job_name: 'mdq-worker'
+    static_configs:
+      - targets: ['host.docker.internal:8081']
