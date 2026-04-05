@@ -45,9 +45,9 @@ deploy-api: ## Deploy Fargate API using outputs from the State stack
 	$(eval VPC_ID := $(shell aws cloudformation describe-stacks --stack-name $(STATE_STACK) --query "Stacks[0].Outputs[?OutputKey=='VpcId'].OutputValue" --output text))
 	$(eval SUBNETS := $(shell aws cloudformation describe-stacks --stack-name $(STATE_STACK) --query "Stacks[0].Outputs[?OutputKey=='PublicSubnetIds'].OutputValue" --output text))
 	
-	@echo "Deploying API Fargate Service..."
+	@echo "Deploying Compute Resources..."
 	aws cloudformation deploy \
-		--template-file infra/api-fargate.yaml \
+		--template-file infra/compute.yaml \
 		--stack-name $(API_STACK) \
 		--capabilities CAPABILITY_IAM \
 		--region $(AWS_REGION) \
@@ -56,18 +56,25 @@ deploy-api: ## Deploy Fargate API using outputs from the State stack
 			VpcId=$(VPC_ID) \
 			Subnets=$(SUBNETS) \
 			ApiImageUrl=$(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/carpecode-task-queue-api:latest \
+			WorkerImageUrl=$(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/carpecode-task-queue-worker:latest \
 			AlbCertificateArn=$(ALB_CERTIFICATE_ARN) \
 			AllowedOrigins=$(ALLOWED_ORIGINS)
 
 deploy-frontend: ## Deploy S3 and CloudFront CDN
-	aws cloudformation deploy --template-file infra/frontend-cdn.yaml --stack-name $(FRONTEND_STACK) --region $(AWS_REGION) --parameter-overrides EnvironmentName=$(ENVIRONMENT)
+	aws cloudformation deploy \
+		--template-file infra/frontend-cdn.yaml \
+		--stack-name $(FRONTEND_STACK) \
+		--region $(AWS_REGION) \
+		--parameter-overrides \
+			EnvironmentName=$(ENVIRONMENT) \
+			CfCertificateArn=$(CF_CERTIFICATE_ARN)
 
 # --- Destroyers ---
 destroy-api:
 	aws cloudformation delete-stack --stack-name $(API_STACK) --region $(AWS_REGION)
 
 destroy-frontend:
-	aws cloudformation delete-stack --stack-name $(FRONTEND_STACK) --region $(AWS_REGION)
+	aws cloudformation delete-stack --stack-name $(FRONTEND_STACK) --region $(AWS_REGION) 
 
 destroy-state: destroy-api
 	aws cloudformation delete-stack --stack-name $(STATE_STACK) --region $(AWS_REGION)
@@ -81,3 +88,9 @@ destroy-oidc:
 
 deploy-all: deploy-oidc create-ecr deploy-state deploy-api deploy-frontend ## Deploy Everything
 destroy-all: destroy-frontend destroy-api destroy-state destroy-ecr destroy-oidc ## Destroy Everything
+
+get-state-urls: ## Get outputs from the State stack
+	$(eval DB_ENDPOINT := $(shell aws cloudformation describe-stacks --stack-name $(STATE_STACK) --query "Stacks[0].Outputs[?OutputKey=='DatabaseEndpoint'].OutputValue" --output text))
+	$(eval REDIS_ENDPOINT := $(shell aws cloudformation describe-stacks --stack-name $(STATE_STACK) --query "Stacks[0].Outputs[?OutputKey=='RedisEndpoint'].OutputValue" --output text))
+	@echo postgres://$(DB_USER):$(DB_PASS)@$(DB_ENDPOINT):5432/taskqueue?sslmode=require
+	@echo redis://$(REDIS_ENDPOINT):6379/0

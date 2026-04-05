@@ -5,6 +5,10 @@ Parameters:
   EnvironmentName:
     Type: String
     Default: dev
+  CfCertificateArn:
+    Type: String
+    NoEcho: true
+    Description: The ARN of the ACM certificate for CloudFront (must be in us-east-1)
 
 Resources:
   # 1. The Private Storage Bucket
@@ -65,6 +69,10 @@ Resources:
             QueryString: false
             Cookies:
               Forward: none
+        ViewerCertificate:
+          AcmCertificateArn: !Sub ${CfCertificateArn}
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
 
   # 4. The Bucket Policy allowing CloudFront to read the files
   FrontendBucketPolicy:

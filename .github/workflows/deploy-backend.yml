@@ -126,3 +126,9 @@ jobs:
             --cluster ${{ env.ENVIRONMENT }}-mdq-cluster \
             --service mdq-api-service \
             --force-new-deployment
+
+          # Restart the Worker service too
+          aws ecs update-service \
+            --cluster ${{ env.ENVIRONMENT }}-mdq-cluster \
+            --service mdq-worker-service \
+            --force-new-deployment

@@ -15,6 +15,9 @@ Parameters:
   ApiImageUrl:
     Type: String
     Description: The ECR URI of the API Docker image
+  WorkerImageUrl:
+    Type: String
+    Description: The ECR URI of the Worker Docker image
   AlbCertificateArn:
     Type: String
     NoEcho: true
@@ -112,7 +115,6 @@ Resources:
                   Fn::ImportValue:
                     !Sub "mdq-state-${EnvironmentName}-AppSecretsArn"
 
-
   # 5. The Fargate Task Definition (How to run your specific Docker image)
   ApiTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -191,6 +193,68 @@ Resources:
         - ContainerName: api
           ContainerPort: 8080
           TargetGroupArn: !Ref AlbTargetGroup
+
+# ==========================================
+# THE WORKER RESOURCES
+# ==========================================
+
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${EnvironmentName}-mdq-worker
+      RetentionInDays: 30
+      
+  WorkerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${EnvironmentName}-mdq-worker
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: worker
+          Image: !Ref WorkerImageUrl
+          # NO PortMappings! Workers do not listen for HTTP traffic.
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: 
+                Fn::Sub:
+                  - "${SecretArn}:DATABASE_URL::"
+                  - SecretArn: 
+                      Fn::ImportValue: !Sub "mdq-state-${EnvironmentName}-AppSecretsArn"
+            - Name: REDIS_URL
+              ValueFrom: 
+                Fn::Sub:
+                  - "${SecretArn}:REDIS_URL::"
+                  - SecretArn: 
+                      Fn::ImportValue: !Sub "mdq-state-${EnvironmentName}-AppSecretsArn"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /ecs/${EnvironmentName}-mdq-worker
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  WorkerService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: mdq-worker-service
+      Cluster: !Ref EcsCluster
+      TaskDefinition: !Ref WorkerTaskDefinition
+      DesiredCount: 1 # Run 1 worker container to start
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            # Workers only need outbound internet/DB access, no inbound HTTP.
+            - Fn::ImportValue:
+                Fn::Sub: "${EnvironmentName}-FargateSecurityGroupId"
+          Subnets: !Ref Subnets
+      # NO LoadBalancers array!
 
 Outputs:
   ApiEndpoint:

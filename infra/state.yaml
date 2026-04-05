@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'MDQ Task Queue - Stateful Infrastructure (VPC, PostgreSQL, Redis)'
+Description: MDQ Task Queue - Stateful Infrastructure (VPC, PostgreSQL, Redis)
 
 Parameters:
   EnvironmentName:
@@ -29,7 +29,7 @@ Resources:
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
-  
+
   VPCGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
@@ -41,7 +41,9 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.1.0/24
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
       MapPublicIpOnLaunch: true
 
   PublicSubnet2:
@@ -49,7 +51,9 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.2.0/24
-      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
       MapPublicIpOnLaunch: true
 
   PrivateSubnet1:
@@ -57,14 +61,18 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.10.0/24
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
 
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.20.0/24
-      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
 
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -175,19 +183,30 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub "mdq/${EnvironmentName}/api-secrets"
-      Description: "Secrets for MDQ Task Queue application"
+      Name: !Sub mdq/${EnvironmentName}/api-secrets
+      Description: Secrets for MDQ Task Queue application
 
 Outputs:
   VpcId:
     Value: !Ref VPC
   PublicSubnetIds:
-    Value: !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2]]
+    Value: !Join
+      - ','
+      - - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
   FargateSecurityGroupId:
     Value: !GetAtt FargateSecurityGroup.GroupId
-    Export: 
-      Name: !Sub "${EnvironmentName}-FargateSecurityGroupId"
+    Export:
+      Name: !Sub ${EnvironmentName}-FargateSecurityGroupId
   AppSecretsArn:
     Value: !Ref AppSecretsNew
     Export:
-      Name: !Sub "mdq-state-${EnvironmentName}-AppSecretsArn"
+      Name: !Sub mdq-state-${EnvironmentName}-AppSecretsArn
+  DatabaseEndpoint:
+    Value: !GetAtt PostgresInstance.Endpoint.Address
+    Export:
+      Name: !Sub mdq-state-${EnvironmentName}-DatabaseEndpoint
+  RedisEndpoint:
+    Value: !GetAtt RedisCluster.RedisEndpoint.Address
+    Export:
+      Name: !Sub mdq-state-${EnvironmentName}-RedisEndpoint
