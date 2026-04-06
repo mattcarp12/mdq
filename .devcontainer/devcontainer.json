@@ -8,24 +8,37 @@
 		"ghcr.io/devcontainers/features/aws-cli:1": {},
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
 		"ghcr.io/devcontainers/features/go:1": {},
-		"ghcr.io/devcontainers/features/node:1": {}
+		"ghcr.io/devcontainers/features/node:1": {},
+		"ghcr.io/mpriscella/features/kind:1": {},
+		"ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {}
 	},
-
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
-
 	// Configure tool-specific properties.
 	"customizations": {
-    "vscode": {
-      "extensions": [
-        "golang.go",
-        "esbenp.prettier-vscode",
-        "ms-azuretools.vscode-docker",
-        "tamasfe.even-better-toml"
-      ]
-    }
-  },
-
+		"vscode": {
+			"extensions": [
+				"golang.go",
+				"esbenp.prettier-vscode",
+				"ms-azuretools.vscode-docker",
+				"tamasfe.even-better-toml",
+				"ms-kubernetes-tools.vscode-kubernetes-tools",
+				"redhat.vscode-yaml",
+				"hashicorp.terraform",
+			]
+		}
+	},
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	// "remoteUser": "root"
+	"mounts": [
+		{
+			"source": "${localEnv:HOME}${localEnv:USERPROFILE}/.aws",
+			"target": "/home/vscode/.aws", // Use /root/.aws if your user is root
+			"type": "bind",
+			"consistency": "cached"
+		}
+	],
+	"containerEnv": {
+		"AWS_SDK_LOAD_CONFIG": "true" // Ensures SDKs read the config file
+	}
 }

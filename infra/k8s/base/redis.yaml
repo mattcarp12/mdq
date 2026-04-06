@@ -1,0 +1,43 @@
+---
+# 1. The Service: Gives Redis a stable internal DNS name
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  labels:
+    app: redis
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: redis # This connects the Service to the Pods below
+
+---
+# 2. The Deployment: Manages the Redis Pod
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-deployment
+spec:
+  replicas: 1 # We only need 1 Redis instance for local dev
+  selector:
+    matchLabels:
+      app: redis
+  template: # This is the blueprint for the Pod
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources: # SOTA: Always define resource limits!
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"

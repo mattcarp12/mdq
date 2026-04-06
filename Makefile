@@ -7,6 +7,7 @@ AWS_REGION ?= us-west-2
 ENVIRONMENT ?= dev
 GITHUB_ORG ?= mattcarp12
 GITHUB_REPO ?= mdq
+INFRA_DIR := infra/aws-ecs
 
 OIDC_STACK := mdq-github-oidc
 STATE_STACK := mdq-state-$(ENVIRONMENT)
@@ -23,7 +24,7 @@ help: ## Display this help menu
 
 # --- Foundation ---
 deploy-oidc: ## Deploy GitHub Actions OIDC Role
-	aws cloudformation deploy --template-file infra/github-oidc.yaml --stack-name $(OIDC_STACK) --capabilities CAPABILITY_NAMED_IAM --region $(AWS_REGION) --parameter-overrides GitHubOrg=$(GITHUB_ORG) GitHubRepo=$(GITHUB_REPO)
+	aws cloudformation deploy --template-file $(INFRA_DIR)/github-oidc.yaml --stack-name $(OIDC_STACK) --capabilities CAPABILITY_NAMED_IAM --region $(AWS_REGION) --parameter-overrides GitHubOrg=$(GITHUB_ORG) GitHubRepo=$(GITHUB_REPO)
 
 create-ecr: ## Create ECR repositories
 	aws ecr create-repository --repository-name carpecode-task-queue-api --region $(AWS_REGION) || true
@@ -31,7 +32,7 @@ create-ecr: ## Create ECR repositories
 
 deploy-state: ## Deploy VPC, Aurora, and Redis
 	aws cloudformation deploy \
-		--template-file infra/state.yaml \
+		--template-file $(INFRA_DIR)/state.yaml \
 		--stack-name $(STATE_STACK) \
 		--region $(AWS_REGION) \
 		--parameter-overrides \
@@ -47,7 +48,7 @@ deploy-api: ## Deploy Fargate API using outputs from the State stack
 	
 	@echo "Deploying Compute Resources..."
 	aws cloudformation deploy \
-		--template-file infra/compute.yaml \
+		--template-file $(INFRA_DIR)/compute.yaml \
 		--stack-name $(API_STACK) \
 		--capabilities CAPABILITY_IAM \
 		--region $(AWS_REGION) \
@@ -62,7 +63,7 @@ deploy-api: ## Deploy Fargate API using outputs from the State stack
 
 deploy-frontend: ## Deploy S3 and CloudFront CDN
 	aws cloudformation deploy \
-		--template-file infra/frontend-cdn.yaml \
+		--template-file $(INFRA_DIR)/frontend-cdn.yaml \
 		--stack-name $(FRONTEND_STACK) \
 		--region $(AWS_REGION) \
 		--parameter-overrides \

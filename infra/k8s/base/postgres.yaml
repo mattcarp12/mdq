@@ -1,0 +1,63 @@
+---
+# 1. The Secrets: Storing the connection strings
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+type: Opaque
+stringData: # stringData allows plain text here; K8s encodes it to Base64 automatically
+  DATABASE_URL: "postgres://mdq_user:mdq_password@postgres-service:5432/mdq_db?sslmode=disable"
+  REDIS_URL: "redis://redis-service:6379"
+  JWT_SECRET: "local-dev-secret-key-123"
+
+---
+# 2. The Postgres Service: Gives the DB a stable DNS name ("postgres-service")
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  labels:
+    app: postgres
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+
+---
+# 3. The Postgres Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            # Setting up the raw DB credentials for the Postgres initialization
+            - name: POSTGRES_USER
+              value: "mdq_user"
+            - name: POSTGRES_PASSWORD
+              value: "mdq_password"
+            - name: POSTGRES_DB
+              value: "mdq_db"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
