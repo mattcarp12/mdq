@@ -19,7 +19,7 @@
 				"tamasfe.even-better-toml",
 				"ms-kubernetes-tools.vscode-kubernetes-tools",
 				"redhat.vscode-yaml",
-				"hashicorp.terraform",
+				"hashicorp.terraform"
 			]
 		}
 	},
@@ -27,8 +27,7 @@
 		{
 			"source": "${localEnv:HOME}${localEnv:USERPROFILE}/.aws",
 			"target": "/home/vscode/.aws", // Use /root/.aws if your user is root
-			"type": "bind",
-			"consistency": "cached"
+			"type": "bind"
 		}
 	],
 	"containerEnv": {

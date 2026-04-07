@@ -14,6 +14,7 @@ resource "aws_ecr_repository" "repos" {
   
   name                 = each.key
   image_tag_mutability = "MUTABLE" # Allows you to overwrite 'latest' during dev
+  force_delete = true
 
   image_scanning_configuration {
     scan_on_push = true # SOTA Security: AWS will automatically scan your Go images for vulnerabilities
