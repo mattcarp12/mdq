@@ -17,7 +17,7 @@ FRONTEND_STACK := mdq-frontend-$(ENVIRONMENT)
 # Automatically get your AWS Account ID
 AWS_ACCOUNT_ID := $(shell aws sts get-caller-identity --query Account --output text)
 
-.PHONY: help deploy-oidc destroy-oidc deploy-state destroy-state create-ecr destroy-ecr deploy-api destroy-api deploy-frontend destroy-frontend deploy-all destroy-all
+.PHONY: help deploy-oidc destroy-oidc deploy-state destroy-state create-ecr destroy-ecr deploy-api destroy-api deploy-frontend destroy-frontend deploy-all destroy-all kind docker
 
 help: ## Display this help menu
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -96,3 +96,27 @@ get-state-urls: ## Get outputs from the State stack
 	$(eval REDIS_ENDPOINT := $(shell aws cloudformation describe-stacks --stack-name $(STATE_STACK) --query "Stacks[0].Outputs[?OutputKey=='RedisEndpoint'].OutputValue" --output text))
 	@echo postgres://$(DB_USER):$(DB_PASS)@$(DB_ENDPOINT):5432/taskqueue?sslmode=require
 	@echo redis://$(REDIS_ENDPOINT):6379/0
+
+# Docker build 
+docker.api:
+	docker build \
+		--build-arg APP_NAME=api \
+		-t mdq-api:latest \
+		-f backend/Dockerfile \
+		backend/
+
+docker.worker:
+	docker build \
+		--build-arg APP_NAME=worker \
+		-t mdq-worker:latest \
+		-f backend/Dockerfile \
+		backend/
+
+docker: docker.api docker.worker
+
+docker.load.kind: docker
+	kind load docker-image mdq-api:latest --name mdq-local
+	kind load docker-image mdq-worker:latest --name mdq-local
+
+kind:
+	kind create cluster --name mdq-local

@@ -71,5 +71,5 @@ func (s *Server) SetupHandler() http.Handler {
 
 func (s *Server) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	w.Write([]byte("OK\n"))
 }
