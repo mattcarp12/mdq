@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 1. Point to the universal truth (Your local manifests)
+resources:
+  - ../../base
+
+# 2. The Mutation: Intercept and replace the images
+images:
+  - name: mdq-api:latest # This must exactly match the image name in base/api.yaml
+    newName: 329177708612dkr.ecr.us-west-2.amazonaws.com/mdq-api
+    newTag: <YOUR_GIT_SHA> # e.g., a1b2c3d
+
+  - name: mdq-worker:latest
+    newName: 329177708612dkr.ecr.us-west-2.amazonaws.com/mdq-worker
+    newTag: <YOUR_GIT_SHA>

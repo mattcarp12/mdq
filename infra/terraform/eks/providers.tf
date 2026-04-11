@@ -11,6 +11,16 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0" # Use any 5.x version, but don't jump to 6.0 automatically
     }
+    
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.4"
+    }
+    
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.12"
+    }
   }
 }
 
@@ -26,6 +36,19 @@ provider "aws" {
       Project     = "MDQ"
       Environment = "Production"
       ManagedBy   = "Terraform"
+    }
+  }
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = aws_eks_cluster.main.endpoint
+    cluster_ca_certificate = base64decode(aws_eks_cluster.main.certificate_authority[0].data)
+    # This executes the AWS CLI in the background to grab a fresh auth token
+    exec {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      args        = ["eks", "get-token", "--cluster-name", aws_eks_cluster.main.name]
+      command     = "aws"
     }
   }
 }
