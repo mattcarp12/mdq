@@ -9,7 +9,7 @@ spec:
       containers:
       - name: migrate
         image: mdq-api:latest
-        imagePullPolicy: Never # CRITICAL FOR LOCAL DEV: Tells K8s not to look on DockerHub
+        imagePullPolicy: IfNotPresent
         args: ["./app", "-migrate"]
         env:
           - name: DATABASE_URL

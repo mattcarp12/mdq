@@ -82,6 +82,16 @@ resource "helm_release" "lbc" {
     value = aws_iam_role.lbc.arn
   }
 
+  set {
+    name  = "region"
+    value = "us-west-2" # Change this if you are using a different region
+  }
+
+  set {
+    name  = "vpcId"
+    value = module.vpc.vpc_id # This pulls the VPC ID directly from your network module
+  }
+
   depends_on = [
     aws_eks_node_group.main,
     aws_iam_role_policy_attachment.lbc

@@ -21,7 +21,7 @@ kind: Deployment
 metadata:
   name: worker-deployment
 spec:
-  replicas: 1 # You can scale this to 5 later to watch them chew through the queue!
+  replicas: 5 # You can scale this to 5 later to watch them chew through the queue!
   selector:
     matchLabels:
       app: worker
@@ -33,7 +33,7 @@ spec:
       containers:
         - name: worker
           image: mdq-worker:latest
-          imagePullPolicy: Never # Force K8s to use the local image we built
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081 # The metrics port
           env:

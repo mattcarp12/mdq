@@ -32,7 +32,7 @@ spec:
       containers:
         - name: api
           image: mdq-api:latest # The local Docker image name
-          imagePullPolicy: Never # CRITICAL FOR LOCAL DEV: Tells K8s not to look on DockerHub
+          imagePullPolicy: IfNotPresent 
           ports:
             - containerPort: 8080
           env:
