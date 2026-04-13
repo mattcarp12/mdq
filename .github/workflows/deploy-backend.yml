@@ -10,7 +10,7 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
 
 env:
   AWS_REGION: us-west-2
@@ -58,13 +58,11 @@ jobs:
           # Dynamically search the file for 'mdq-api:latest' and replace it with your ECR URL and Git SHA
           kustomize edit set image mdq-api:latest=${{ env.ECR_REGISTRY }}/mdq-api:${{ env.IMAGE_TAG }}
           kustomize edit set image mdq-worker:latest=${{ env.ECR_REGISTRY }}/mdq-worker:${{ env.IMAGE_TAG }}
-          kustomize edit set image mdq-migrator:latest=${{ env.ECR_REGISTRY }}/mdq-migrator:${{ env.IMAGE_TAG }}
+          # kustomize edit set image mdq-migrator:latest=${{ env.ECR_REGISTRY }}/mdq-migrator:${{ env.IMAGE_TAG }}
 
       - name: Commit and Push Manifest Update
         # Community action that safely commits modified files back to your repo
         uses: stefanzweifel/git-auto-commit-action@v5
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         with:
           commit_message: "chore: auto-update EKS image tags to ${{ env.IMAGE_TAG }}"
           # Strictly limit the commit to just this file to prevent accidental pushes
