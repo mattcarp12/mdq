@@ -48,6 +48,18 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: REDIS_URL
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
           resources:
             requests:
               memory: "64Mi"

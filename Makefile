@@ -120,3 +120,26 @@ docker.load.kind: docker
 
 kind:
 	kind create cluster --name mdq-local
+
+# ==============================================================================
+# Infrastructure: AWS EKS
+# ==============================================================================
+
+.PHONY: eks-up eks-down
+
+eks-up:
+	@echo "🚀 Provisioning AWS EKS Cluster via Terraform..."
+	cd infra/terraform/eks && terraform apply -var="github_repo=mattcarp12/mdq"
+	@echo "🔐 Fetching Kubeconfig credentials..."
+	aws eks --region us-west-2 update-kubeconfig --name mdq-prod
+	@echo "📦 Deploying Kubernetes manifests via Kustomize..."
+	kubectl apply -k infra/k8s/overlays/prod-eks
+	@echo "✅ Environment is live. Run 'kubectl get ingress' for your URL."
+
+eks-down:
+	@echo "🛑 1. Deleting ArgoCD Application (Triggers K8s to delete the Ingress/ALB)..."
+	kubectl delete application mdq-production -n argocd --ignore-not-found=true
+	@echo "⏳ Waiting 30 seconds for AWS to physically destroy the Load Balancer..."
+	sleep 30
+	@echo "🔥 2. Destroying AWS EKS Cluster and VPC..."
+	cd infra/terraform/eks && terraform destroy -var="github_repo=YOUR_GITHUB/YOUR_REPO" -auto-approve

@@ -11,7 +11,7 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip 
     
     # Health check path so AWS knows your API is alive
-    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
 spec:
   rules:
     - http:

@@ -1,0 +1,21 @@
+# File: infra/k8s/argocd/mdq-prod.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mdq-production
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/mattcarp12/mdq.git'
+    targetRevision: HEAD
+    # Tell ArgoCD to watch the specific Kustomize folder we built
+    path: infra/k8s/overlays/prod-eks
+  destination:
+    server: 'https://kubernetes.default.svc' # Deploy to the cluster it lives in
+    namespace: default
+  syncPolicy:
+    # This is the magic switch. 'automated' means no human intervention required.
+    automated:
+      prune: true     # If you delete a file in Git, Argo deletes the resource in AWS
+      selfHeal: true  # If you manually `kubectl delete` a pod, Argo instantly puts it back
