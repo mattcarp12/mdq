@@ -3,18 +3,14 @@ kind: Kustomization
 
 # 1. Point to the universal truth (Your local manifests)
 resources:
-  - ../../base
+- ../../base
 
 # 2. The Mutation: Intercept and replace the images
+
 images:
-  - name: mdq-api:latest # This must exactly match the image name in base/api.yaml
-    newName: 329177708612.dkr.ecr.us-west-2.amazonaws.com/mdq-api
-    newTag: a666e1ea9bbfc3d369a7b92ce3c32c8601208eae
-
-  - name: mdq-worker:latest
-    newName: 329177708612.dkr.ecr.us-west-2.amazonaws.com/mdq-worker
-    newTag: a666e1ea9bbfc3d369a7b92ce3c32c8601208eae
-
-  # - name: mdq-migrator:latest
-  #   newName: 329177708612dkr.ecr.us-west-2.amazonaws.com/mdq-migrator
-  #   newTag: <YOUR_GIT_SHA>
+- name: mdq-api:latest
+  newName: 329177708612.dkr.ecr.us-west-2.amazonaws.com/mdq-api
+  newTag: 2258ab1e0193c808984b8afcbbeecb7bae901706
+- name: mdq-worker:latest
+  newName: 329177708612.dkr.ecr.us-west-2.amazonaws.com/mdq-worker
+  newTag: 2258ab1e0193c808984b8afcbbeecb7bae901706
